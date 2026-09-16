@@ -22,8 +22,7 @@ python3 -m venv .venv
 
 The Python side is ctypes, so there is nothing to compile. It finds the shared
 library through `GBA_ENV_LIB`, `GBA_EMULATOR_ROOT`, a sibling checkout, or an
-installed location -- see `SPLITTING.md`, which also covers moving this
-directory into a repository of its own.
+installed location -- see `EMULATOR.md`.
 
 The interface is versioned: loading a library built against a different
 `GBA_ENV_ABI_VERSION` raises immediately with both numbers rather than
@@ -99,7 +98,7 @@ There is no per-instance RNG seeding or sticky-action support yet.
 
 - Frame stacking, configurable observation size, colour observations. The
   observation is fixed at 60x40 grayscale; changing it means editing `OBS_W`
-  and `OBS_H` in `src/core/memmap.h` and rebuilding.
+  and `OBS_H` in the emulator's `src/core/memmap.h` and rebuilding.
 - Episode termination. Nothing detects when an episode is over; that is the
   caller's job, usually from a probe.
 - A Gymnasium or EnvPool adapter.

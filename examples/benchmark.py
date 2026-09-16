@@ -4,7 +4,7 @@ Reports agent steps per second -- actions taken, not frames emulated -- since
 that is what sets wall-clock training time. With the usual action repeat of 4,
 one agent step is four emulated frames.
 
-    rl/.venv/bin/python rl/examples/benchmark.py <rom.gba> [instances] [steps]
+    .venv/bin/python examples/benchmark.py <rom.gba> [instances] [steps]
 """
 
 import os

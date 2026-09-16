@@ -55,6 +55,20 @@ def _candidate_paths():
     yield _LIB_NAME  # the dynamic loader's own search path
 
 
+def emulator_root():
+    """The emulator checkout, or None. Used to find its test ROMs and tools."""
+    named = os.environ.get("GBA_EMULATOR_ROOT")
+    if named and os.path.isdir(named):
+        return os.path.abspath(named)
+    here = os.path.dirname(os.path.abspath(__file__))
+    neighbourhood = os.path.abspath(os.path.join(here, "..", ".."))
+    for name in ("gba", "gba-gpu", "gba-emulator"):
+        candidate = os.path.join(neighbourhood, name)
+        if os.path.isdir(os.path.join(candidate, "src", "api")):
+            return candidate
+    return None
+
+
 def load():
     tried = []
     for path in _candidate_paths():
