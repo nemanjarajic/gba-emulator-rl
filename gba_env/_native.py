@@ -16,17 +16,41 @@ _LIB_NAMES = {
 _LIB_NAME = _LIB_NAMES.get(sys.platform, "libgba_env.so")
 
 
+_BUILD_DIRS = ("build", "build/Release", "build/RelWithDebInfo", "cmake-build-release")
+
+
 def _candidate_paths():
-    """Where the shared library might be, most specific first."""
-    env = os.environ.get("GBA_ENV_LIB")
-    if env:
-        yield env
+    """Where the shared library might be, most specific first.
+
+    This package and the emulator are separate repositories, so the library is
+    not simply "next to us". In order: an explicit path, an emulator checkout
+    named by GBA_EMULATOR_ROOT, a sibling checkout next to this one, this
+    package's own directory, and finally whatever the dynamic loader can find
+    (which covers `cmake --install`).
+    """
+    explicit = os.environ.get("GBA_ENV_LIB")
+    if explicit:
+        yield explicit
+
+    roots = []
+    named = os.environ.get("GBA_EMULATOR_ROOT")
+    if named:
+        roots.append(named)
+
     here = os.path.dirname(os.path.abspath(__file__))
-    repo = os.path.abspath(os.path.join(here, "..", ".."))
-    for build in ("build", "build/Release", "build/RelWithDebInfo", "cmake-build-release"):
-        yield os.path.join(repo, build, _LIB_NAME)
+    package_root = os.path.abspath(os.path.join(here, ".."))
+    # Inside the emulator repository, and a sibling checkout beside it.
+    roots.append(os.path.abspath(os.path.join(package_root, "..")))
+    parent = os.path.abspath(os.path.join(package_root, "..", ".."))
+    for name in ("gba", "gba-gpu", "gba-emulator"):
+        roots.append(os.path.join(parent, name))
+
+    for root in roots:
+        for build in _BUILD_DIRS:
+            yield os.path.join(root, build, _LIB_NAME)
+
     yield os.path.join(here, _LIB_NAME)
-    yield _LIB_NAME  # fall back to the loader's own search path
+    yield _LIB_NAME  # the dynamic loader's own search path
 
 
 def load():
@@ -47,7 +71,27 @@ def load():
     )
 
 
+# The version of gba_env.h these bindings were written against. The emulator
+# and this package live in separate repositories, so a mismatch is a real
+# possibility rather than a theoretical one, and it would otherwise show up as
+# a crash or as silently wrong data.
+EXPECTED_ABI = 1
+
 lib, lib_path = load()
+
+if hasattr(lib, "gba_env_abi_version"):
+    lib.gba_env_abi_version.restype = ctypes.c_uint32
+    found = lib.gba_env_abi_version()
+    if found != EXPECTED_ABI:
+        raise RuntimeError(
+            f"{lib_path} speaks gba_env ABI {found}, these bindings expect "
+            f"{EXPECTED_ABI}. Rebuild the emulator, or use bindings matching it."
+        )
+else:
+    raise RuntimeError(
+        f"{lib_path} predates gba_env_abi_version and is too old for these "
+        f"bindings (which expect ABI {EXPECTED_ABI}). Rebuild the emulator."
+    )
 
 _u8p = ctypes.POINTER(ctypes.c_uint8)
 _u32p = ctypes.POINTER(ctypes.c_uint32)

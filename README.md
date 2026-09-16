@@ -10,16 +10,24 @@ emulator.
 
 ## Setup
 
+Needs the emulator built, which produces `libgba_env`:
+
 ```sh
-cmake --build build                          # builds libgba_env
-python3 -m venv rl/.venv
-rl/.venv/bin/pip install -r rl/requirements.txt
-rl/.venv/bin/python rl/examples/smoke_test.py
+cd /path/to/gba && cmake --build build
+
+python3 -m venv .venv
+.venv/bin/pip install -r requirements.txt
+.venv/bin/python examples/smoke_test.py
 ```
 
-The Python side is ctypes, so there is nothing to compile. It finds
-`libgba_env` next to the repository's `build/` directory, or wherever
-`GBA_ENV_LIB` points.
+The Python side is ctypes, so there is nothing to compile. It finds the shared
+library through `GBA_ENV_LIB`, `GBA_EMULATOR_ROOT`, a sibling checkout, or an
+installed location -- see `SPLITTING.md`, which also covers moving this
+directory into a repository of its own.
+
+The interface is versioned: loading a library built against a different
+`GBA_ENV_ABI_VERSION` raises immediately with both numbers rather than
+crashing or returning wrong data.
 
 ## Use
 
