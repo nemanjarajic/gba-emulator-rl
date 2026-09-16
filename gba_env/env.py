@@ -137,7 +137,7 @@ class GbaVecEnv:
         """Reads GBA addresses from every instance: (len(addresses), N) uint32.
 
         This is how a reward is read -- a score or a counter in the game's RAM.
-        At 60x60 the observation cannot resolve text, so for a dialogue-driven
+        At 120x80 the observation cannot resolve text, so for a dialogue-driven
         game this, not the pixels, is where the signal is.
         """
         addr = np.ascontiguousarray(addresses, dtype=np.uint32)
