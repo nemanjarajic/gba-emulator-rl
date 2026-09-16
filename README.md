@@ -13,7 +13,7 @@ emulator.
 Needs the emulator built, which produces `libgba_env`:
 
 ```sh
-cd /path/to/gba && cmake --build build
+cd /path/to/gba-emulator && cmake --build build
 
 python3 -m venv .venv
 .venv/bin/pip install -r requirements.txt

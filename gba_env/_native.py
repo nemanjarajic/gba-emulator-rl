@@ -44,7 +44,7 @@ def _candidate_paths():
     # root, then look inside it for a checkout by name.
     neighbourhood = os.path.abspath(os.path.join(package_root, ".."))
     roots.append(neighbourhood)
-    for name in ("gba", "gba-gpu", "gba-emulator"):
+    for name in ("gba-emulator", "gba", "gba-gpu"):
         roots.append(os.path.join(neighbourhood, name))
 
     for root in roots:
@@ -62,7 +62,7 @@ def emulator_root():
         return os.path.abspath(named)
     here = os.path.dirname(os.path.abspath(__file__))
     neighbourhood = os.path.abspath(os.path.join(here, "..", ".."))
-    for name in ("gba", "gba-gpu", "gba-emulator"):
+    for name in ("gba-emulator", "gba", "gba-gpu"):
         candidate = os.path.join(neighbourhood, name)
         if os.path.isdir(os.path.join(candidate, "src", "api")):
             return candidate

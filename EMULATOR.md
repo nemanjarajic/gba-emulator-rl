@@ -3,8 +3,8 @@
 This repository contains no emulator source. It talks to `libgba_env` through
 the C ABI declared in the emulator's `src/api/gba_env.h`, loaded with ctypes.
 
-The emulator lives at <https://github.com/> — wherever you keep the `gba`
-checkout. Build it once and this repository finds it.
+The emulator is <https://github.com/nemanjarajic/gba-emulator>. Build it once
+and this repository finds it.
 
 ## Finding it
 
@@ -12,7 +12,7 @@ The bindings look for the shared library in this order:
 
 1. `GBA_ENV_LIB` — a full path to the library itself.
 2. `GBA_EMULATOR_ROOT` — an emulator checkout; its `build/` is searched.
-3. A checkout named `gba`, `gba-gpu` or `gba-emulator` beside this repository.
+3. A checkout named `gba-emulator`, `gba` or `gba-gpu` beside this repository.
 4. This package's own directory.
 5. Wherever the dynamic loader looks, which covers `cmake --install`.
 
@@ -20,16 +20,16 @@ So two checkouts side by side need no configuration at all:
 
 ```
 projects/
-  gba/        <- the emulator, built
-  gba-rl/     <- this
+  gba-emulator/       <- the emulator, built
+  gba-emulator-rl/    <- this
 ```
 
 Otherwise:
 
 ```sh
-export GBA_EMULATOR_ROOT=/path/to/gba
+export GBA_EMULATOR_ROOT=/path/to/gba-emulator
 # or
-export GBA_ENV_LIB=/path/to/gba/build/libgba_env.dylib
+export GBA_ENV_LIB=/path/to/gba-emulator/build/libgba_env.dylib
 ```
 
 The same search finds the emulator checkout itself, which is where the test
