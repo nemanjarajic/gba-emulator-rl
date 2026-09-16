@@ -39,11 +39,13 @@ def _candidate_paths():
 
     here = os.path.dirname(os.path.abspath(__file__))
     package_root = os.path.abspath(os.path.join(here, ".."))
-    # Inside the emulator repository, and a sibling checkout beside it.
-    roots.append(os.path.abspath(os.path.join(package_root, "..")))
-    parent = os.path.abspath(os.path.join(package_root, "..", ".."))
+    # One level up is the emulator repository when this package lives inside it,
+    # and the directory holding both checkouts when it does not. Try it as a
+    # root, then look inside it for a checkout by name.
+    neighbourhood = os.path.abspath(os.path.join(package_root, ".."))
+    roots.append(neighbourhood)
     for name in ("gba", "gba-gpu", "gba-emulator"):
-        roots.append(os.path.join(parent, name))
+        roots.append(os.path.join(neighbourhood, name))
 
     for root in roots:
         for build in _BUILD_DIRS:
