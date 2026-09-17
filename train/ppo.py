@@ -26,6 +26,7 @@ import torch.nn as nn
 from torch.distributions import Categorical
 
 from .emerald import ACTIONS, EmeraldExplore
+from .grid import screens, write_png
 
 MAP_BUCKETS = 1024
 
@@ -55,6 +56,8 @@ def parse_args():
     p.add_argument("--max-grad-norm", type=float, default=0.5)
     p.add_argument("--checkpoint-every", type=int, default=10, help="updates between checkpoints")
     p.add_argument("--seed", type=int, default=1)
+    p.add_argument("--grid", type=int, default=36,
+                   help="instances drawn to <run>/grid.png every step for train.watch; 0 to disable")
     return p.parse_args()
 
 
@@ -196,6 +199,8 @@ def main():
             stack = torch.roll(stack, -1, dims=1)
             stack[:, -1] = torch.from_numpy(frame).to(device)
             maps = torch.from_numpy(env.map_ids()).to(device)
+            if args.grid:
+                write_png(os.path.join(args.run, "grid.png"), screens(env.env, args.grid))
         global_step += batch
 
         # ---- advantages -------------------------------------------------

@@ -39,6 +39,18 @@ It writes `runs/emerald/log.csv` after every update (with the current episode's
 progress so far), `episodes.csv` when an episode ends, and `latest.pt` every ten;
 `--resume` continues a run. Every option is listed by `--help`.
 
+To watch the instances play, in a second terminal while training runs:
+
+```sh
+python -m train.watch --run runs/emerald            # --scale 0.5 for a smaller window
+```
+
+The trainer writes 36 instances' screens, spread across the pool, to
+`runs/emerald/grid.png` after every step (`--grid` sets how many, 0 turns it
+off; it costs about 40 ms against a step of several seconds). The window shows
+that grid with the latest progress line, and only reads files, so it can be
+opened and closed at any time.
+
 ## What the agent sees, does and is paid for
 
 - **Observation:** the last 3 screens at 120x80 grayscale, plus the current map
