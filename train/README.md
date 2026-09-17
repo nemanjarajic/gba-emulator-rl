@@ -35,7 +35,8 @@ That takes about 40 seconds. `emerald_start.txt` is the input script; the
 python -m train.ppo --rom <emerald.gba> --state train/states/emerald_start.state --run runs/emerald
 ```
 
-It writes `runs/emerald/log.csv` after every update and `latest.pt` every ten;
+It writes `runs/emerald/log.csv` after every update (with the current episode's
+progress so far), `episodes.csv` when an episode ends, and `latest.pt` every ten;
 `--resume` continues a run. Every option is listed by `--help`.
 
 ## What the agent sees, does and is paid for
@@ -57,7 +58,7 @@ It writes `runs/emerald/log.csv` after every update and `latest.pt` every ten;
 
   Progress rewards pay only for new highs, so nothing can be farmed by losing
   and regaining it.
-- **Episodes:** 2048 steps, all instances together, every one from the start
+- **Episodes:** 512 steps, all instances together, every one from the start
   state.
 
 ## RAM addresses

@@ -38,7 +38,7 @@ def parse_args():
     p.add_argument("--resume", action="store_true", help="continue from the run's latest checkpoint")
     p.add_argument("--num-envs", type=int, default=4096)
     p.add_argument("--frames-per-action", type=int, default=16, help="16 frames walks one tile")
-    p.add_argument("--episode-steps", type=int, default=2048)
+    p.add_argument("--episode-steps", type=int, default=512)
     p.add_argument("--rollout", type=int, default=32, help="steps per environment per update")
     p.add_argument("--total-steps", type=float, default=2e8)
     p.add_argument("--frame-stack", type=int, default=3)
@@ -157,15 +157,24 @@ def main():
     maps = torch.from_numpy(env.map_ids()).to(device)
     normalize = ReturnNormalizer(n, args.gamma, device)
 
-    log_path = os.path.join(args.run, "log.csv")
-    log_new = not os.path.exists(log_path)
-    log_file = open(log_path, "a", newline="")
-    log = csv.writer(log_file)
-    if log_new:
-        log.writerow(["update", "global_step", "sps", "episode_return", "tiles", "maps", "max_maps",
-                      "party", "level_sum", "badges", "story_flags", "policy_loss", "value_loss",
-                      "entropy", "approx_kl"])
-    last_episode = {}
+    # log.csv: one row per update, with the current episode's progress so far,
+    # so learning is visible long before an episode ends.
+    # episodes.csv: one row per finished episode, with its final numbers.
+    stat_keys = ["episode_step", "return", "tiles", "maps", "max_maps", "party", "level_sum",
+                 "badges", "story_flags"]
+
+    def open_csv(name, header):
+        path = os.path.join(args.run, name)
+        new = not os.path.exists(path)
+        f = open(path, "a", newline="")
+        writer = csv.writer(f)
+        if new:
+            writer.writerow(header)
+        return f, writer
+
+    log_file, log = open_csv("log.csv", ["update", "global_step", "sps"] + stat_keys +
+                             ["policy_loss", "value_loss", "entropy", "approx_kl"])
+    episodes_file, episodes = open_csv("episodes.csv", ["update", "global_step"] + stat_keys)
 
     batch = T * n
     while global_step < args.total_steps:
@@ -182,7 +191,8 @@ def main():
             done_buf[t] = float(done)
             if done:
                 stack.zero_()
-                last_episode = info
+                episodes.writerow([update + 1, global_step + (t + 1) * n] + [info[key] for key in stat_keys])
+                episodes_file.flush()
             stack = torch.roll(stack, -1, dims=1)
             stack[:, -1] = torch.from_numpy(frame).to(device)
             maps = torch.from_numpy(env.map_ids()).to(device)
@@ -235,16 +245,14 @@ def main():
         update += 1
         sps = batch / (time.time() - t0)
         s = np.mean(stats, axis=0)
-        e = last_episode
-        log.writerow([update, global_step, round(sps)] +
-                     [e.get(key, "") for key in ("episode_return", "tiles", "maps", "max_maps", "party",
-                                                 "level_sum", "badges", "story_flags")] +
+        e = env.stats()
+        log.writerow([update, global_step, round(sps)] + [e[key] for key in stat_keys] +
                      [f"{x:.5f}" for x in s])
         log_file.flush()
         print(f"update {update} step {global_step:,} {sps:,.0f} sps | "
-              f"episode return {e.get('episode_return', float('nan')):.2f} tiles {e.get('tiles', float('nan')):.1f} "
-              f"maps {e.get('maps', float('nan')):.2f} (max {e.get('max_maps', '-')}) "
-              f"party {e.get('party', float('nan')):.2f} | pg {s[0]:.4f} v {s[1]:.4f} ent {s[2]:.3f} kl {s[3]:.4f} "
+              f"episode step {e['episode_step']}/{args.episode_steps}: return {e['return']:.2f} "
+              f"tiles {e['tiles']:.1f} maps {e['maps']:.2f} (max {e['max_maps']}) party {e['party']:.2f} "
+              f"| pg {s[0]:.4f} v {s[1]:.4f} ent {s[2]:.3f} kl {s[3]:.4f} "
               f"| torch {torch.cuda.max_memory_reserved() / 2**30:.1f} GiB",
               flush=True)
 
@@ -255,6 +263,7 @@ def main():
     torch.save({"policy": policy.state_dict(), "opt": opt.state_dict(),
                 "global_step": global_step, "update": update, "args": vars(args)}, ckpt_path)
     log_file.close()
+    episodes_file.close()
     env.close()
 
 

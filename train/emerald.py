@@ -166,18 +166,24 @@ class EmeraldExplore:
         info = {}
         done = self.t >= self.episode_steps
         if done:
-            info = {
-                "episode_return": float(self.episode_return.mean()),
-                "tiles": float(np.mean([len(s) for s in self.seen_tiles])),
-                "maps": float(np.mean([len(s) for s in self.seen_maps])),
-                "max_maps": int(max(len(s) for s in self.seen_maps)),
-                "party": float(ram["party"].mean()),
-                "level_sum": float(ram["level_sum"].mean()),
-                "badges": float(ram["badges"].mean()),
-                "story_flags": float(ram["story"].mean()),
-            }
+            info = self.stats()
             self._start_episode()
         return self.observe(), reward.astype(np.float32), done, info
+
+    def stats(self) -> dict:
+        """The current episode so far, averaged over instances."""
+        ram = self.ram
+        return {
+            "episode_step": self.t,
+            "return": float(self.episode_return.mean()),
+            "tiles": float(np.mean([len(s) for s in self.seen_tiles])),
+            "maps": float(np.mean([len(s) for s in self.seen_maps])),
+            "max_maps": int(max(len(s) for s in self.seen_maps)),
+            "party": float(ram["party"].mean()),
+            "level_sum": float(ram["level_sum"].mean()),
+            "badges": float(ram["badges"].mean()),
+            "story_flags": float(ram["story"].mean()),
+        }
 
     def close(self) -> None:
         self.env.close()
