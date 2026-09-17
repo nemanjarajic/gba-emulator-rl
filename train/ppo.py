@@ -56,6 +56,8 @@ def parse_args():
     p.add_argument("--max-grad-norm", type=float, default=0.5)
     p.add_argument("--checkpoint-every", type=int, default=10, help="updates between checkpoints")
     p.add_argument("--seed", type=int, default=1)
+    p.add_argument("--gpu-duty", type=float, default=0.5,
+                   help="share of time the emulator may hold the GPU (0-1]; below 1 leaves room for the desktop")
     p.add_argument("--grid", type=int, default=36,
                    help="instances drawn to <run>/grid.png every step for train.watch; 0 to disable")
     return p.parse_args()
@@ -131,6 +133,8 @@ def main():
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     os.makedirs(args.run, exist_ok=True)
 
+    # Read by the emulator library when the environment is created.
+    os.environ["GBA_ENV_GPU_DUTY"] = str(args.gpu_duty)
     env = EmeraldExplore(args.rom, args.state, args.num_envs, args.frames_per_action, args.episode_steps)
     n, k, T = env.n, args.frame_stack, args.rollout
     h, w = env.env.obs_height, env.env.obs_width

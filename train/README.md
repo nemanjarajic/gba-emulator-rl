@@ -100,6 +100,18 @@ by two orders of magnitude, so watch `torch ... GiB` in the log line. Fewer
 instances (`--num-envs`) or a smaller `--infer-chunk` and `--minibatch-size`
 bring it down.
 
+### Sharing the GPU with the rest of the machine
+
+The emulator would otherwise hold the GPU continuously, which makes the desktop
+stutter however few instances run: the GPU reads 99% busy with four. So the
+trainer defaults to `--gpu-duty 0.5`, which sleeps after every emulator dispatch
+for as long as the dispatch took, leaving half the GPU's time to everything
+else. That halves throughput, to about 150 agent steps/s. Use `--gpu-duty 1` when
+the machine is otherwise idle.
+
+Lowering `--num-envs` does not help here: the load stays near 100% and only
+throughput falls. It does lower GPU memory.
+
 ## Expectations
 
 Pokemon is a long-horizon game and exploration is slow to learn. Comparable
