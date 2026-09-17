@@ -25,7 +25,7 @@ import torch
 import torch.nn as nn
 from torch.distributions import Categorical
 
-from .emerald import ACTIONS, EmeraldExplore
+from .emerald import ACTIONS, REWARD_TERMS, EmeraldExplore
 from .grid import screens, write_png
 
 MAP_BUCKETS = 1024
@@ -167,8 +167,8 @@ def main():
     # log.csv: one row per update, with the current episode's progress so far,
     # so learning is visible long before an episode ends.
     # episodes.csv: one row per finished episode, with its final numbers.
-    stat_keys = ["episode_step", "return", "tiles", "maps", "max_maps", "party", "level_sum",
-                 "badges", "story_flags"]
+    stat_keys = (["episode_step", "return", "tiles", "maps", "max_maps", "party", "owned", "level_sum",
+                  "badges", "story_flags"] + [f"r_{term}" for term in REWARD_TERMS])
 
     def open_csv(name, header):
         path = os.path.join(args.run, name)

@@ -58,18 +58,34 @@ opened and closed at any time.
 - **Actions:** UP, DOWN, LEFT, RIGHT, A, B, each held for 16 frames, which walks
   one tile. START and SELECT are left out; menus cost many steps and lead
   nowhere for exploration.
-- **Reward**, all read from game RAM (`train/emerald.py`):
+- **Reward**, all read from game RAM (`train/emerald.py`, weights in `RewardWeights`):
 
   | event | reward |
   |---|---|
-  | standing on a tile not yet visited this episode | 0.02 |
-  | entering a map not yet visited this episode | 1 |
-  | the count of story flags set reaches a new high | 0.5 each |
-  | the party's total level reaches a new high | 1 per level |
-  | a badge | 20 |
+  | standing on a tile not yet visited this episode | +0.02 |
+  | entering a map not yet visited this episode | +1 |
+  | the count of story flags set reaches a new high | +0.5 each |
+  | the party's total level reaches a new high | +0.2 per level |
+  | a badge | +100 |
+  | the party reaches a new size (the starter, a catch) | +5 per Pokemon |
+  | the Pokedex owned count reaches a new high | +2 per species |
+  | party HP restored, the party otherwise unchanged | +1 per whole party's worth, at most +5 an episode |
+  | a step on a tile already visited this episode (standing still included) | -0.002 |
+  | each step once no new tile has been found for 200 steps | -0.01 |
+  | a party Pokemon faints | -2 |
+  | the whole party faints | -10 |
 
   Progress rewards pay only for new highs, so nothing can be farmed by losing
-  and regaining it.
+  and regaining it; healing is capped for the same reason, and a level-up or the
+  recovery after a blackout does not count as healing. The revisit cost is kept
+  small because battles hold the player on one tile for many steps.
+
+  Battle wins are not rewarded directly: the battle-outcome address could not be
+  verified, and levels, fainting and blackouts carry the signal from party data.
+  Every party and Pokedex value is range-checked, so a wrong address reads as
+  nothing rather than paying out. `episodes.csv` and `log.csv` break the return
+  down by term (`r_new_tile`, `r_faint`, ...), so a term that dominates shows.
+  `python -m train.test_rewards` checks every term against scripted RAM.
 - **Episodes:** 512 steps, all instances together, every one from the start
   state.
 
@@ -87,6 +103,9 @@ moves to a random address, so it is found through `gSaveBlock1Ptr` every step.
 | badges | flags `0x867`..`0x86E` | not yet |
 | party count, party | `0x020244E9`, `0x020244EC` (100 bytes each) | count reads 0 before a starter |
 | level | party slot + `0x54` | not yet |
+| HP, max HP | party slot + `0x56`, + `0x58` | not yet |
+| save block 2 | pointer at `0x03005D90` | not yet |
+| Pokedex owned | save block 2 + `0x28`, 52 bytes | not yet |
 
 ## Throughput on an RTX 5060 Ti (8 GB)
 
