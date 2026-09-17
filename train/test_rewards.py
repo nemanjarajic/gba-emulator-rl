@@ -19,8 +19,8 @@ if "gba_env" not in sys.modules:
 from train.emerald import REWARD_TERMS, EmeraldExplore, RewardWeights  # noqa: E402
 
 
-def ram(x=0, y=0, party=None, story=10, badges=0, owned=0):
-    """One instance. party: list of (level, hp, max_hp)."""
+def ram(x=0, y=0, party=None, story=10, badges=0, owned=0, dialog=None):
+    """One instance. party: list of (level, hp, max_hp); dialog: text id or None."""
     party = party or []
     valid = np.zeros((6, 1), bool)
     hp = np.zeros((6, 1), int)
@@ -29,6 +29,8 @@ def ram(x=0, y=0, party=None, story=10, badges=0, owned=0):
         valid[i], hp[i], max_hp[i] = True, h, m
     a = lambda v: np.array([v])  # noqa: E731
     return {"x": a(x), "y": a(y), "group": a(0), "num": a(9), "story": a(story), "badges": a(badges),
+            "dialog_open": np.array([dialog is not None]),
+            "dialog_hash": np.array([dialog or 0], dtype=np.uint64),
             "owned": a(owned), "party": a(len(party)), "level_sum": a(sum(p[0] for p in party)),
             "valid": valid, "hp": hp, "max_hp": max_hp}
 
@@ -40,9 +42,13 @@ class Fake:
     observations = np.zeros((1, 80, 120), np.uint8)
 
 
-def make(first, weights=RewardWeights()):
+def make(first, weights=RewardWeights(), shared=None):
+    """A one-instance environment. `shared` reuses another's memory of what it
+    has seen, which is how novelty now works: across instances and episodes."""
     e = EmeraldExplore.__new__(EmeraldExplore)
     e.env, e.n, e.frames, e.episode_steps, e.w = Fake(), 1, 16, 10**9, weights
+    e.tile_visits, e.map_visits = (shared.tile_visits, shared.map_visits) if shared else ({}, {})
+    e.seen_dialog = [set()]
     e._script = [first]
     e.read = lambda: e._script.pop(0)
     e.ram = {}
@@ -68,7 +74,7 @@ w = RewardWeights()
 starter = [(5, 20, 20)]
 
 e = make(ram(0, 0))
-r, _ = run(e, ram(1, 0)); check("new tile", r, w.new_tile)
+r, _ = run(e, ram(1, 0)); check("a tile nobody has visited", r, w.new_tile)
 r, _ = run(e, ram(1, 0)); check("standing still is a revisit", r, w.revisit)
 r, _ = run(e, ram(1, 0, story=11)); check("story flag (plus revisit)", r, w.story_flag + w.revisit)
 r, _ = run(e, ram(1, 0, story=10)); check("losing a flag pays nothing more", r, w.revisit)
@@ -99,6 +105,24 @@ for _ in range(w.stuck_after):
     run(e, ram(0, 0))
 r, _ = run(e, ram(0, 0)); check("stuck after stuck_after steps", r, w.revisit + w.stuck)
 r, _ = run(e, ram(5, 5)); check("a new tile clears stuck", r, w.new_tile)
+r, _ = run(e, ram(6, 5)); check("still paid while standing on fresh ground", r, w.new_tile)
+
+e = make(ram(0, 0))
+r, _ = run(e, ram(1, 0, dialog=111)); check("a message this instance has not read", r, w.new_tile + w.new_dialog)
+r, _ = run(e, ram(1, 0, dialog=111)); check("the same page still open: not charged again", r, w.revisit)
+r, _ = run(e, ram(1, 0, dialog=222)); check("the next page of it", r, w.revisit + w.new_dialog)
+r, _ = run(e, ram(1, 0)); check("box closed", r, w.revisit)
+r, _ = run(e, ram(1, 0, dialog=111)); check("reading it again is charged", r, w.revisit + w.repeat_dialog)
+other = make(ram(0, 0), shared=e)
+r, _ = run(other, ram(9, 9, dialog=111))
+check("another instance still gets paid for it", r, w.new_tile + w.new_dialog)
+
+e2 = make(ram(0, 0), shared=e)
+r, _ = run(e2, ram(1, 0))
+check("a tile two instances have now visited pays w/sqrt(2)", r, w.new_tile / 2 ** 0.5)
+e3 = make(ram(0, 0), shared=e2)
+r, _ = run(e3, ram(1, 0))
+check("a third visit pays w/sqrt(3)", r, w.new_tile / 3 ** 0.5)
 
 e = make(ram(0, 0))
 r, _ = run(e, ram(0, 0, badges=1)); check("badge", r, w.badge + w.revisit)

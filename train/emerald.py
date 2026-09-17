@@ -31,6 +31,9 @@ LEVEL_OFFSET = 0x54           # struct Pokemon.level (u8)
 HP_OFFSET = 0x56              # struct Pokemon.hp (u16), then maxHP (u16) at 0x58
 POKEDEX_OWNED_OFFSET = 0x28   # SaveBlock2.pokedex.owned, one bit per species
 POKEDEX_BYTES = 52
+DIALOG_TEXT = 0x02021FC4      # gStringVar4: the message being displayed, expanded
+DIALOG_WORDS = 16             # enough of it to tell messages apart
+DIALOG_OPEN = 0x03000F2C      # non-zero exactly while a text box is on screen
 FLAGS_OFFSET = 0x1270         # SaveBlock1.flags, one bit per flag
 FLAG_BYTES = 300
 BADGE_FLAGS = range(0x867, 0x86F)  # FLAG_BADGE01_GET .. FLAG_BADGE08_GET
@@ -39,8 +42,8 @@ BADGE_FLAGS = range(0x867, 0x86F)  # FLAG_BADGE01_GET .. FLAG_BADGE08_GET
 FIRST_STORY_FLAG = 0x20
 
 # Every reward term, in the order logs report them.
-REWARD_TERMS = ("new_tile", "new_map", "story_flag", "level", "badge", "party_member", "species_owned",
-                "heal", "revisit", "stuck", "faint", "blackout")
+REWARD_TERMS = ("new_tile", "new_map", "new_dialog", "story_flag", "level", "badge", "party_member",
+                "species_owned", "heal", "repeat_dialog", "revisit", "stuck", "faint", "blackout")
 
 # The policy's buttons. START and SELECT are left out: they open menus that
 # cost many steps and lead nowhere for exploration.
@@ -53,9 +56,15 @@ ACTIONS = np.array(
 @dataclass
 class RewardWeights:
     # -- positive -----------------------------------------------------------
-    new_tile: float = 0.02        # a map tile this episode has not stood on
-    new_map: float = 1.0          # a map this episode has not entered
-    story_flag: float = 0.5       # per story flag, when the count reaches a new high
+    # Tiles and maps pay w / sqrt(visits so far, by any instance, in any
+    # episode): full price for ground nobody has covered, less for ground a few
+    # instances have, almost nothing for the room everyone starts in. Paying
+    # only the first visitor would leave 4095 of 4096 instances with no signal;
+    # paying every visit is what let them farm one room every episode.
+    new_tile: float = 0.02
+    new_map: float = 3.0
+    new_dialog: float = 0.5       # a page of text this instance has not read before
+    story_flag: float = 0.25      # per story flag, when the count reaches a new high
     level: float = 0.2            # per level, when the party's total reaches a new high
     badge: float = 100.0          # per badge
     party_member: float = 5.0     # per Pokemon, when the party reaches a new size
@@ -63,11 +72,22 @@ class RewardWeights:
     heal: float = 1.0             # per whole party's worth of HP restored...
     heal_cap: float = 5.0         # ...up to this much per episode, so healing cannot be farmed
     # -- negative -----------------------------------------------------------
-    revisit: float = -0.002       # a step spent on a tile already visited this episode
+    repeat_dialog: float = -0.25  # a page this instance has read before
+    revisit: float = -0.002       # a step spent on a tile visited before
     stuck: float = -0.01          # each step once no new tile has been found for stuck_after steps
     stuck_after: int = 200
     faint: float = -2.0           # per party Pokemon whose HP falls to zero
     blackout: float = -10.0       # the whole party has fainted
+
+
+def _hash(words: np.ndarray) -> np.ndarray:
+    """(W, N) words -> (N,) uint64 FNV-1a hash, one per instance."""
+    h = np.full(words.shape[1], np.uint64(0xCBF29CE484222325), dtype=np.uint64)
+    prime = np.uint64(0x100000001B3)
+    with np.errstate(over="ignore"):  # hashing is meant to wrap
+        for row in words:
+            h = (h ^ row.astype(np.uint64)) * prime
+    return h
 
 
 def _bits(data: np.ndarray) -> np.ndarray:
@@ -94,6 +114,13 @@ class EmeraldExplore:
         self.flag_words = [FLAGS_OFFSET + 4 * i for i in range(FLAG_BYTES // 4)]
         self.dex_words = [POKEDEX_OWNED_OFFSET + 4 * i for i in range(POKEDEX_BYTES // 4)]
         self.party_words = [PARTY + i * PARTY_SLOT + o for i in range(6) for o in (LEVEL_OFFSET, HP_OFFSET + 2)]
+        self.dialog_words = [DIALOG_OPEN] + [DIALOG_TEXT + 4 * i for i in range(DIALOG_WORDS)]
+        # How often each tile and map has ever been visited, by any instance in
+        # any episode. Messages are tracked per instance instead: they are few,
+        # and one instance reading something should not silence it for the rest.
+        self.tile_visits: dict[int, int] = {}
+        self.map_visits: dict[int, int] = {}
+        self.seen_dialog: list[set[int]] = [set() for _ in range(self.n)]
         self.ram: dict = {}
         self._start_episode()
 
@@ -131,6 +158,13 @@ class EmeraldExplore:
         owned = _bits(self._gather(SAVEBLOCK2_PTR, self.dex_words)).sum(axis=0).astype(np.int32)
         owned = np.where(owned <= 386, owned, 0)  # more than every species: not a Pokedex
 
+        # The message on screen, identified by a hash of the expanded text
+        # rather than a pointer, so messages built at run time (anything with
+        # the player's name in it) still tell themselves apart.
+        dialog = self.env.probe(self.dialog_words)
+        dialog_hash = _hash(dialog[1:])
+        dialog_open = dialog[0] != 0
+
         count = np.minimum(self.env.probe([PARTY_COUNT])[0] & 0xFF, 6).astype(np.int32)
         words = self.env.probe(self.party_words).reshape(6, 2, self.n)
         level = (words[:, 0] & 0xFF).astype(np.int32)
@@ -142,6 +176,7 @@ class EmeraldExplore:
         hp = np.where(valid, hp, 0)
         max_hp = np.where(valid, max_hp, 0)
         return {"x": x, "y": y, "group": group, "num": num, "story": story, "badges": badges,
+                "dialog_open": dialog_open, "dialog_hash": dialog_hash,
                 "owned": owned, "party": valid.sum(axis=0).astype(np.int32),
                 "level_sum": np.where(valid, level, 0).sum(axis=0), "valid": valid,
                 "hp": hp, "max_hp": max_hp}
@@ -155,7 +190,10 @@ class EmeraldExplore:
         ram = self.ram = self.read()
         self.seen_tiles = [set() for _ in range(self.n)]
         self.seen_maps = [set() for _ in range(self.n)]
+        self.last_dialog = np.zeros(self.n, dtype=np.uint64)
         self._note_novelty(ram)
+        self.last_dialog = np.zeros(self.n, dtype=np.uint64)  # judged again after a reset
+        self._note_dialog(ram)
         # Progress rewards pay for new highs only, so nothing can be farmed by
         # losing a level or clearing a flag and regaining it.
         self.best = {key: ram[key].copy() for key in ("story", "level_sum", "badges", "party", "owned")}
@@ -166,19 +204,49 @@ class EmeraldExplore:
         # term a return came from.
         self.components = {key: np.zeros(self.n) for key in REWARD_TERMS}
 
-    def _note_novelty(self, ram: dict) -> tuple[np.ndarray, np.ndarray]:
-        new_tile = np.zeros(self.n, dtype=bool)
-        new_map = np.zeros(self.n, dtype=bool)
+    def _note_novelty(self, ram: dict) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+        """Novelty of where each instance now stands.
+
+        Returns the tile and map bonuses, each the weight over the square root
+        of how often that place has been visited, and a flag for tiles this
+        instance has already stood on this episode, which is what the revisit
+        penalty charges for. The per-episode sets also feed the logs.
+        """
+        tile_bonus = np.zeros(self.n)
+        map_bonus = np.zeros(self.n)
+        again = np.zeros(self.n, dtype=bool)
         for i in range(self.n):
             m = (int(ram["group"][i]) << 8) | int(ram["num"][i])
             tile = (m << 16) | ((int(ram["x"][i]) & 0xFF) << 8) | (int(ram["y"][i]) & 0xFF)
-            if tile not in self.seen_tiles[i]:
+            again[i] = tile in self.seen_tiles[i]
+            if not again[i]:  # a place counts once per instance per episode
                 self.seen_tiles[i].add(tile)
-                new_tile[i] = True
+                visits = self.tile_visits[tile] = self.tile_visits.get(tile, 0) + 1
+                tile_bonus[i] = self.w.new_tile / np.sqrt(visits)
             if m not in self.seen_maps[i]:
                 self.seen_maps[i].add(m)
-                new_map[i] = True
-        return new_tile, new_map
+                visits = self.map_visits[m] = self.map_visits.get(m, 0) + 1
+                map_bonus[i] = self.w.new_map / np.sqrt(visits)
+        return tile_bonus, map_bonus, again
+
+    def _note_dialog(self, ram: dict) -> tuple[np.ndarray, np.ndarray]:
+        """A page of text just appeared: is it one never shown before?
+
+        Judged only when the text changes, so a box left open for many steps
+        counts once rather than every step.
+        """
+        new = np.zeros(self.n, dtype=bool)
+        repeat = np.zeros(self.n, dtype=bool)
+        shown = np.where(ram["dialog_open"], ram["dialog_hash"], np.uint64(0))
+        for i in np.flatnonzero(ram["dialog_open"] & (shown != self.last_dialog)):
+            h = int(shown[i])
+            if h in self.seen_dialog[i]:
+                repeat[i] = True
+            else:
+                self.seen_dialog[i].add(h)
+                new[i] = True
+        self.last_dialog = shown
+        return new, repeat
 
     def observe(self) -> np.ndarray:
         """(N, H, W) uint8 -- a copy, since the environment's buffer is reused."""
@@ -191,7 +259,8 @@ class EmeraldExplore:
         prev, ram = self.ram, self.read()
         self.ram = ram
         w = self.w
-        new_tile, new_map = self._note_novelty(ram)
+        tile_bonus, map_bonus, again = self._note_novelty(ram)
+        new_dialog, repeat_dialog = self._note_dialog(ram)
 
         def gain(key):
             g = np.maximum(ram[key] - self.best[key], 0)
@@ -214,18 +283,20 @@ class EmeraldExplore:
         heal = np.minimum(w.heal * restored, np.maximum(w.heal_cap - self.healed, 0.0))
         self.healed += heal
 
-        self.since_new_tile = np.where(new_tile, 0, self.since_new_tile + 1)
+        self.since_new_tile = np.where(again, self.since_new_tile + 1, 0)
 
         terms = {
-            "new_tile": w.new_tile * new_tile,
-            "new_map": w.new_map * new_map,
+            "new_tile": tile_bonus,
+            "new_map": map_bonus,
+            "new_dialog": w.new_dialog * new_dialog,
             "story_flag": w.story_flag * gain("story"),
             "level": w.level * gain("level_sum"),
             "badge": w.badge * gain("badges"),
             "party_member": w.party_member * gain("party"),
             "species_owned": w.species_owned * gain("owned"),
             "heal": heal,
-            "revisit": w.revisit * ~new_tile,
+            "repeat_dialog": w.repeat_dialog * repeat_dialog,
+            "revisit": w.revisit * again,
             "stuck": w.stuck * (self.since_new_tile > w.stuck_after),
             "faint": w.faint * fainted,
             "blackout": w.blackout * blackout,
@@ -257,9 +328,25 @@ class EmeraldExplore:
             "level_sum": float(ram["level_sum"].mean()),
             "badges": float(ram["badges"].mean()),
             "story_flags": float(ram["story"].mean()),
+            "tiles_ever": len(self.tile_visits),
+            "maps_ever": len(self.map_visits),
+            "dialog_ever": float(np.mean([len(d) for d in self.seen_dialog])),
             # Where the return came from, so a term that dominates is visible.
             **{f"r_{key}": float(np.mean(value)) for key, value in self.components.items()},
         }
+
+    def novelty_state(self) -> dict:
+        """Visit counts and the messages each instance has read, for a checkpoint."""
+        return {"tile_visits": self.tile_visits, "map_visits": self.map_visits,
+                "seen_dialog": [np.fromiter(d, dtype=np.uint64) for d in self.seen_dialog]}
+
+    def load_novelty_state(self, state: dict) -> None:
+        """Restores them, so a resumed run does not pay for the same ground twice."""
+        self.tile_visits = dict(state.get("tile_visits", {}))
+        self.map_visits = dict(state.get("map_visits", {}))
+        saved = state.get("seen_dialog", [])
+        for i in range(self.n):
+            self.seen_dialog[i] = {int(v) for v in saved[i]} if i < len(saved) else set()
 
     def close(self) -> None:
         self.env.close()

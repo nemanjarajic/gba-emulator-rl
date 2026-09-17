@@ -148,7 +148,9 @@ def main():
         policy.load_state_dict(ckpt["policy"])
         opt.load_state_dict(ckpt["opt"])
         global_step, update = ckpt["global_step"], ckpt["update"]
-        print(f"resumed from {ckpt_path} at step {global_step}")
+        env.load_novelty_state(ckpt.get("novelty", {}))
+        print(f"resumed from {ckpt_path} at step {global_step}, "
+              f"{len(env.tile_visits)} tiles and {sum(len(d) for d in env.seen_dialog)} messages already seen")
 
     # Rollout buffers. Frames stay on the host (T*N*k*H*W bytes).
     obs_buf = torch.zeros((T, n, k, h, w), dtype=torch.uint8).pin_memory()
@@ -168,7 +170,8 @@ def main():
     # so learning is visible long before an episode ends.
     # episodes.csv: one row per finished episode, with its final numbers.
     stat_keys = (["episode_step", "return", "tiles", "maps", "max_maps", "party", "owned", "level_sum",
-                  "badges", "story_flags"] + [f"r_{term}" for term in REWARD_TERMS])
+                  "badges", "story_flags", "tiles_ever", "maps_ever", "dialog_ever"]
+                 + [f"r_{term}" for term in REWARD_TERMS])
 
     def open_csv(name, header):
         path = os.path.join(args.run, name)
@@ -261,16 +264,19 @@ def main():
         print(f"update {update} step {global_step:,} {sps:,.0f} sps | "
               f"episode step {e['episode_step']}/{args.episode_steps}: return {e['return']:.2f} "
               f"tiles {e['tiles']:.1f} maps {e['maps']:.2f} (max {e['max_maps']}) party {e['party']:.2f} "
+              f"| ever: {e['maps_ever']} maps {e['tiles_ever']} tiles {e['dialog_ever']} msgs "
               f"| pg {s[0]:.4f} v {s[1]:.4f} ent {s[2]:.3f} kl {s[3]:.4f} "
               f"| torch {torch.cuda.max_memory_reserved() / 2**30:.1f} GiB",
               flush=True)
 
         if update % args.checkpoint_every == 0:
             torch.save({"policy": policy.state_dict(), "opt": opt.state_dict(),
-                        "global_step": global_step, "update": update, "args": vars(args)}, ckpt_path)
+                        "global_step": global_step, "update": update, "args": vars(args),
+                        "novelty": env.novelty_state()}, ckpt_path)
 
     torch.save({"policy": policy.state_dict(), "opt": opt.state_dict(),
-                "global_step": global_step, "update": update, "args": vars(args)}, ckpt_path)
+                "global_step": global_step, "update": update, "args": vars(args),
+                "novelty": env.novelty_state()}, ckpt_path)
     log_file.close()
     episodes_file.close()
     env.close()

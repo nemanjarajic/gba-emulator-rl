@@ -72,30 +72,46 @@ opened and closed at any time.
 
   | event | reward |
   |---|---|
-  | standing on a tile not yet visited this episode | +0.02 |
-  | entering a map not yet visited this episode | +1 |
-  | the count of story flags set reaches a new high | +0.5 each |
+  | standing on a tile | +0.02 / sqrt(times any instance has ever stood there) |
+  | entering a map | +3 / sqrt(times any instance has ever entered it) |
+  | a page of text this instance has not read | +0.5 |
+  | the count of story flags set reaches a new high | +0.25 each |
   | the party's total level reaches a new high | +0.2 per level |
   | a badge | +100 |
   | the party reaches a new size (the starter, a catch) | +5 per Pokemon |
   | the Pokedex owned count reaches a new high | +2 per species |
   | party HP restored, the party otherwise unchanged | +1 per whole party's worth, at most +5 an episode |
+  | a page of text this instance has read before | -0.25 |
   | a step on a tile already visited this episode (standing still included) | -0.002 |
   | each step once no new tile has been found for 200 steps | -0.01 |
   | a party Pokemon faints | -2 |
   | the whole party faints | -10 |
 
+  **Novelty does not reset between episodes.** It did at first, and an agent
+  simply walked the same rooms for the same reward every episode: 2.9M steps
+  from the truck and 3.6M from the clock, each plateauing within one room of
+  where it started. Visit counts now persist, and the reward decays as
+  1/sqrt(visits), so covered ground stops paying while genuinely new ground pays
+  full. Strict first-visit-only novelty was tried first and is worse: with 4096
+  instances the first to reach a tile takes the reward and the other 4095 get
+  nothing, which turned the second episode into pure penalty.
+
+  Dialogue is tracked per instance rather than globally, for the same reason,
+  and judged only when the text changes, so a box left open is not charged every
+  step. A message is identified by a hash of the expanded text at `gStringVar4`,
+  which distinguishes messages built at run time (anything containing the
+  player's name).
+
   Progress rewards pay only for new highs, so nothing can be farmed by losing
   and regaining it; healing is capped for the same reason, and a level-up or the
-  recovery after a blackout does not count as healing. The revisit cost is kept
-  small because battles hold the player on one tile for many steps.
+  recovery after a blackout does not count as healing.
 
   Battle wins are not rewarded directly: the battle-outcome address could not be
   verified, and levels, fainting and blackouts carry the signal from party data.
   Every party and Pokedex value is range-checked, so a wrong address reads as
   nothing rather than paying out. `episodes.csv` and `log.csv` break the return
-  down by term (`r_new_tile`, `r_faint`, ...), so a term that dominates shows.
-  `python -m train.test_rewards` checks every term against scripted RAM.
+  down by term (`r_new_tile`, `r_repeat_dialog`, ...), so a term that dominates
+  shows. `python -m train.test_rewards` checks every term against scripted RAM.
 - **Episodes:** 512 steps, all instances together, every one from the start
   state.
 
@@ -116,6 +132,8 @@ moves to a random address, so it is found through `gSaveBlock1Ptr` every step.
 | HP, max HP | party slot + `0x56`, + `0x58` | not yet |
 | save block 2 | pointer at `0x03005D90` | not yet |
 | Pokedex owned | save block 2 + `0x28`, 52 bytes | not yet |
+| a text box is open | `0x03000F2C` | yes: 1 in seven dialogue snapshots, 0 in three without |
+| the message on screen | `gStringVar4` at `0x02021FC4` | yes: found "clock" there in the game's text encoding |
 
 ## Throughput on an RTX 5060 Ti (8 GB)
 
