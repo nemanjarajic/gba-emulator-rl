@@ -1,0 +1,18 @@
+# Pokemon Emerald: from power-on to the player standing in the moving truck,
+# with no text box open. Build with the emulator's make_state:
+#   make_state <emerald.gba> train/states/emerald_start.txt train/states/emerald_start.state
+mash A 700       # title screen, Birch's speech, gender, a name typed by mashing
+mash B 10
+none 90          # the last A opened the box on the truck's cargo; page through it
+B 4
+none 60
+B 4
+none 60
+B 4
+none 60
+B 4
+none 60
+B 4
+none 60
+B 4
+none 120
