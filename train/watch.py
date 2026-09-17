@@ -49,7 +49,11 @@ def main():
         try:
             mtime = os.path.getmtime(grid_path)
             if mtime != state["mtime"]:
-                image = tk.PhotoImage(file=grid_path)
+                # Read the bytes and hand them over, rather than letting Tk open
+                # the file: a file held open here blocks the trainer's rename.
+                with open(grid_path, "rb") as f:
+                    data = f.read()
+                image = tk.PhotoImage(data=data)
                 # PhotoImage scales by integer ratios only: zoom up, subsample down.
                 if args.scale >= 1:
                     image = image.zoom(max(1, round(args.scale)))

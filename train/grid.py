@@ -2,6 +2,7 @@
 
 import os
 import struct
+import time
 import zlib
 
 import numpy as np
@@ -44,7 +45,19 @@ def write_png(path: str, rgb: np.ndarray) -> None:
 
     png = (b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", struct.pack(">IIBBBBB", w, h, 8, 2, 0, 0, 0))
            + chunk(b"IDAT", zlib.compress(raw.tobytes(), 1)) + chunk(b"IEND", b""))
+    # Windows refuses to replace a file another process has open, and the
+    # viewer opens this one every time it changes. A screenshot is never worth
+    # stopping a run for, so the rename is retried briefly and then given up on.
     tmp = path + ".tmp"
     with open(tmp, "wb") as f:
         f.write(png)
-    os.replace(tmp, path)
+    for attempt in range(5):
+        try:
+            os.replace(tmp, path)
+            return
+        except PermissionError:
+            time.sleep(0.05 * (attempt + 1))
+    try:
+        os.remove(tmp)
+    except OSError:
+        pass

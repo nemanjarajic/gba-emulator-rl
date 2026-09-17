@@ -186,6 +186,12 @@ def main():
                              ["policy_loss", "value_loss", "entropy", "approx_kl"])
     episodes_file, episodes = open_csv("episodes.csv", ["update", "global_step"] + stat_keys)
 
+    # The emulator races when the emulated machines are halted, so a sudden
+    # jump in throughput with the world standing still means the games have
+    # stopped, not that training sped up. One run hit this after 4.3M steps;
+    # recording it leaves evidence for the next time rather than a puzzle.
+    typical_sps, frozen_since = None, None
+
     batch = T * n
     while global_step < args.total_steps:
         t0 = time.time()
@@ -256,6 +262,16 @@ def main():
 
         update += 1
         sps = batch / (time.time() - t0)
+        typical_sps = sps if typical_sps is None else 0.8 * typical_sps + 0.2 * sps
+        if sps > 4 * typical_sps and frozen_since is None:
+            frozen_since = update
+            shot = os.path.join(args.run, f"frozen_{update}.png")
+            if args.grid:
+                write_png(shot, screens(env.env, args.grid))
+            print(f"WARNING: {sps:,.0f} steps/s against a usual {typical_sps:,.0f}: the emulated "
+                  f"machines look halted. Wrote {shot}", flush=True)
+        elif sps < 2 * typical_sps:
+            frozen_since = None
         s = np.mean(stats, axis=0)
         e = env.stats()
         log.writerow([update, global_step, round(sps)] + [e[key] for key in stat_keys] +
