@@ -144,7 +144,9 @@ def main():
     global_step, update = 0, 0
     ckpt_path = os.path.join(args.run, "latest.pt")
     if args.resume and os.path.exists(ckpt_path):
-        ckpt = torch.load(ckpt_path, map_location=device)
+        # weights_only=False: the checkpoint also carries the novelty counts,
+        # which are plain Python and numpy data, and it is this run's own file.
+        ckpt = torch.load(ckpt_path, map_location=device, weights_only=False)
         policy.load_state_dict(ckpt["policy"])
         opt.load_state_dict(ckpt["opt"])
         global_step, update = ckpt["global_step"], ckpt["update"]
