@@ -1,0 +1,179 @@
+# Continues from emerald_start.state (the moving truck) to the first point the
+# game leaves the player alone: upstairs in the bedroom with the wall clock set.
+#
+#   make_state <emerald.gba> train/states/emerald_clockset.txt \
+#       train/states/emerald_clockset.state --from train/states/emerald_start.state
+#
+# Emerald will not let the player leave Littleroot until the clock is set, and
+# the clock's "Is this the correct time?" prompt starts on NO: pressing A there
+# returns to the clock, so mashing A loops forever and an agent that has not
+# learned UP-then-A can never pass. Hence this state.
+RIGHT 16 x3      # out of the truck
+none 240
+mash A 40        # Mom's greeting outside
+none 300
+A 4              # her dialogue pages slowly; press, wait, press
+none 40
+A 4
+none 40
+A 4
+none 40
+A 4
+none 40
+A 4
+none 40
+A 4
+none 40
+A 4
+none 40
+A 4
+none 40
+A 4
+none 40
+A 4
+none 40
+A 4
+none 40
+A 4
+none 40
+A 4
+none 40
+A 4
+none 40
+A 4
+none 40
+A 4
+none 40
+A 4
+none 40
+A 4
+none 40
+A 4
+none 40
+A 4
+none 400        # she walks inside; follow through the door
+A 4
+none 40
+A 4
+none 40
+A 4
+none 40
+A 4
+none 40
+A 4
+none 40
+A 4
+none 40
+A 4
+none 40
+A 4
+none 40
+A 4
+none 40
+A 4
+none 40
+A 4
+none 40
+A 4
+none 40
+A 4
+none 40
+A 4
+none 40
+A 4
+none 40
+A 4
+none 40
+A 4
+none 40
+A 4
+none 40
+A 4
+none 40
+A 4
+none 40
+A 4
+none 40
+A 4
+none 40
+A 4
+none 40
+A 4
+none 40
+A 4
+none 300
+UP 16 x6        # up the stairs to the bedroom
+none 200
+LEFT 16 x2      # to the wall clock
+none 20
+UP 8            # face it
+none 20
+A 4
+none 120
+A 4             # "The clock is stopped..."
+none 60
+A 4             # "Better set it and start it!"
+none 120
+A 4             # the clock face appears; accept the time it opens on
+none 200
+A 4
+none 90
+UP 4            # the prompt starts on NO: move to YES
+none 20
+A 4
+none 240
+A 4
+none 45
+A 4
+none 45
+A 4
+none 45
+A 4
+none 45
+A 4
+none 45
+A 4
+none 45
+A 4
+none 45
+A 4
+none 45
+A 4
+none 45
+A 4
+none 45
+A 4
+none 45
+A 4
+none 45
+A 4
+none 45
+A 4
+none 45
+A 4
+none 45
+A 4
+none 45
+A 4
+none 45
+A 4
+none 45
+A 4
+none 45
+A 4
+none 45
+A 4
+none 45
+A 4
+none 45
+A 4
+none 45
+A 4
+none 45
+A 4
+none 45
+A 4
+none 45
+A 4
+none 45
+none 300

@@ -29,6 +29,16 @@ below real time:
 That takes about 40 seconds. `emerald_start.txt` is the input script; the
 `.state` file is not committed, since it contains the game's memory.
 
+**Train from `emerald_clockset.state` instead**, built the same way with
+`--from train/states/emerald_start.state`. Emerald keeps Littleroot's exits shut
+until the player sets the wall clock upstairs, and the clock's "Is this the
+correct time?" prompt starts on NO: pressing A there returns to the clock, so a
+policy that mashes A loops forever and needs UP-then-A to pass. A first run from
+the truck confirmed it, plateauing at exactly 4 maps -- the truck, the town and
+both floors of the house -- with about 20 story flags and nothing further, for
+2.9M steps. `emerald_clockset.state` starts where the game first leaves the
+player alone, with the town open and Route 101 and the starter reachable.
+
 ## 2. Train
 
 ```sh
