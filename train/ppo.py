@@ -108,7 +108,18 @@ def act(policy: "Policy", frames: torch.Tensor, maps: torch.Tensor, chunk: int):
 
 
 class ReturnNormalizer:
-    """Scales rewards by a running estimate of the discounted return's spread."""
+    """Scales rewards by a running estimate of the discounted return's spread.
+
+    The divisor has a floor and the result is clipped. Without them a batch
+    whose returns are nearly all zero -- the first batch after a reward change,
+    when the agent has not yet found anything the new reward pays for --
+    divides by almost nothing: rewards came back thousands of times too large,
+    the value loss reached 276,666 and the policy took a KL-18 step in one
+    update.
+    """
+
+    MIN_SCALE = 0.1
+    CLIP = 10.0
 
     def __init__(self, n: int, gamma: float, device):
         self.gamma, self.ret = gamma, torch.zeros(n, device=device)
@@ -124,7 +135,16 @@ class ReturnNormalizer:
         self.count = total
         if done:
             self.ret.zero_()
-        return reward / (self.var ** 0.5 + 1e-8)
+        scale = max(self.var ** 0.5, self.MIN_SCALE)
+        return torch.clamp(reward / scale, -self.CLIP, self.CLIP)
+
+    def state(self) -> dict:
+        return {"mean": self.mean, "var": self.var, "count": self.count}
+
+    def load(self, state: dict) -> None:
+        self.mean = state.get("mean", self.mean)
+        self.var = state.get("var", self.var)
+        self.count = state.get("count", self.count)
 
 
 def main():
@@ -142,6 +162,7 @@ def main():
     policy = Policy(k, h, w, len(ACTIONS)).to(device)
     opt = torch.optim.Adam(policy.parameters(), lr=args.lr, eps=1e-5)
     global_step, update = 0, 0
+    pending_normalizer: dict = {}
     ckpt_path = os.path.join(args.run, "latest.pt")
     if args.resume and os.path.exists(ckpt_path):
         # weights_only=False: the checkpoint also carries the novelty counts,
@@ -151,6 +172,7 @@ def main():
         opt.load_state_dict(ckpt["opt"])
         global_step, update = ckpt["global_step"], ckpt["update"]
         env.load_novelty_state(ckpt.get("novelty", {}))
+        pending_normalizer = ckpt.get("normalizer", {})
         print(f"resumed from {ckpt_path} at step {global_step}, "
               f"{env.tile_seen.sum()} tiles and {sum(len(d) for d in env.seen_dialog)} messages already seen")
 
@@ -167,6 +189,7 @@ def main():
     stack[:, -1] = torch.from_numpy(env.observe()).to(device)
     maps = torch.from_numpy(env.map_ids()).to(device)
     normalize = ReturnNormalizer(n, args.gamma, device)
+    normalize.load(pending_normalizer)
 
     # log.csv: one row per update, with the current episode's progress so far,
     # so learning is visible long before an episode ends.
@@ -291,11 +314,11 @@ def main():
         if update % args.checkpoint_every == 0:
             torch.save({"policy": policy.state_dict(), "opt": opt.state_dict(),
                         "global_step": global_step, "update": update, "args": vars(args),
-                        "novelty": env.novelty_state()}, ckpt_path)
+                        "novelty": env.novelty_state(), "normalizer": normalize.state()}, ckpt_path)
 
     torch.save({"policy": policy.state_dict(), "opt": opt.state_dict(),
                 "global_step": global_step, "update": update, "args": vars(args),
-                "novelty": env.novelty_state()}, ckpt_path)
+                "novelty": env.novelty_state(), "normalizer": normalize.state()}, ckpt_path)
     log_file.close()
     episodes_file.close()
     env.close()
