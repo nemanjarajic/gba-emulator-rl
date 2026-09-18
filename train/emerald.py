@@ -16,6 +16,7 @@ verified. Levels, fainting and blacking out carry the same signal from party
 data, which can.
 """
 
+import os
 from dataclasses import dataclass
 
 import numpy as np
@@ -74,7 +75,10 @@ class RewardWeights:
     # leaving means walking into what looks like a wall, which earns no tile
     # and used to be charged the revisit penalty, so the agent was being taught
     # away from the one move that opens the map.
-    new_try: float = 0.01
+    # Deliberately far below new_tile: at 0.01 a tile's six directions were
+    # worth more than the tile, and agents spent whole episodes testing every
+    # edge of the room they started in rather than walking out of it.
+    new_try: float = 0.003
     new_dialog: float = 0.5       # a page of text this instance has not read before
     dialog_cap: float = 3.0       # ...up to this much an episode: menus print
                                   # endless unread text, and with walking no
@@ -120,9 +124,18 @@ class EmeraldExplore:
     """
 
     def __init__(self, rom: str, state: str, num_envs: int, frames_per_action: int = 16,
-                 episode_steps: int = 2048, weights: RewardWeights = RewardWeights()):
+                 episode_steps: int = 2048, weights: RewardWeights = RewardWeights(),
+                 anchor_path: str = ""):
         self.env = GbaVecEnv(rom, num_instances=num_envs)
-        self.env.load_reset_point(state)
+        # Episodes start from whichever state got furthest, if one was saved by
+        # an earlier run; otherwise from the scripted start.
+        self.anchor_path = anchor_path
+        self.anchor_maps = 0
+        if anchor_path and os.path.exists(anchor_path):
+            self.env.load_reset_point(anchor_path)
+            print(f"starting episodes from the anchor at {anchor_path}", flush=True)
+        else:
+            self.env.load_reset_point(state)
         self.n = self.env.num_instances
         self.frames = frames_per_action
         self.episode_steps = episode_steps
@@ -362,8 +375,38 @@ class EmeraldExplore:
         done = self.t >= self.episode_steps
         if done:
             info = self.stats()
+            info["anchored"] = self._anchor()
             self._start_episode()
         return self.observe(), reward.astype(np.float32), done, info
+
+    def _anchor(self) -> int:
+        """Makes the furthest instance's machine the start of the next episode.
+
+        A game like this is a chain of gates -- a clock to set, a cutscene to
+        sit through, a door in a wall -- and an agent that passes one only
+        occasionally must pass it again every episode. Keeping the state that
+        got furthest means progress is not thrown away at every reset: once one
+        instance reaches a new map, every instance starts from there.
+
+        Chosen by maps seen, then tiles, and only ever forward: an instance in
+        the middle of a text box is skipped, since a start state that begins
+        inside a dialogue would teach the wrong thing.
+        """
+        if not self.anchor_path:
+            return 0
+        maps = np.array([len(m) for m in self.seen_maps_ever])
+        tiles = self.tile_seen.sum(axis=1)
+        eligible = ~self.ram["dialog_open"]
+        if not eligible.any():
+            return 0
+        score = np.where(eligible, maps * 100000 + tiles, -1)
+        best = int(np.argmax(score))
+        if maps[best] <= self.anchor_maps:
+            return 0
+        self.env.capture_reset_point(best)
+        self.env.save_reset_point(self.anchor_path)
+        self.anchor_maps = int(maps[best])
+        return self.anchor_maps
 
     def stats(self) -> dict:
         """The current episode so far, averaged over instances."""

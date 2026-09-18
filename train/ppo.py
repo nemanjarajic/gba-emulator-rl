@@ -58,6 +58,8 @@ def parse_args():
     p.add_argument("--seed", type=int, default=1)
     p.add_argument("--gpu-duty", type=float, default=0.5,
                    help="share of time the emulator may hold the GPU (0-1]; below 1 leaves room for the desktop")
+    p.add_argument("--no-anchor", action="store_true",
+                   help="do not carry the furthest instance's state into the next episode")
     p.add_argument("--grid", type=int, default=36,
                    help="instances drawn to <run>/grid.png every step for train.watch; 0 to disable")
     return p.parse_args()
@@ -155,7 +157,9 @@ def main():
 
     # Read by the emulator library when the environment is created.
     os.environ["GBA_ENV_GPU_DUTY"] = str(args.gpu_duty)
-    env = EmeraldExplore(args.rom, args.state, args.num_envs, args.frames_per_action, args.episode_steps)
+    anchor_path = "" if args.no_anchor else os.path.join(args.run, "anchor.state")
+    env = EmeraldExplore(args.rom, args.state, args.num_envs, args.frames_per_action,
+                         args.episode_steps, anchor_path=anchor_path)
     n, k, T = env.n, args.frame_stack, args.rollout
     h, w = env.env.obs_height, env.env.obs_width
 
@@ -235,6 +239,9 @@ def main():
                 stack.zero_()
                 episodes.writerow([update + 1, global_step + (t + 1) * n] + [info[key] for key in stat_keys])
                 episodes_file.flush()
+                if info.get("anchored"):
+                    print(f"  anchored the next episode to an instance that had seen "
+                          f"{info['anchored']} maps", flush=True)
             stack = torch.roll(stack, -1, dims=1)
             stack[:, -1] = torch.from_numpy(frame).to(device)
             maps = torch.from_numpy(env.map_ids()).to(device)

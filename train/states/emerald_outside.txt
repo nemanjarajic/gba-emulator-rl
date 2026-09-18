@@ -1,0 +1,114 @@
+# Continues from emerald_clockset.state to standing outside the house, in
+# Littleroot Town, with the map open.
+#
+#   make_state <emerald.gba> train/states/emerald_outside.txt \
+#       train/states/emerald_outside.state --from train/states/emerald_clockset.state
+#
+# Two gates sit between the bedroom and the front door, and 16M steps of
+# training never passed either. The stairs are one tile entered from the side,
+# and coming down them triggers a scripted scene: Mom calls the player to the
+# television and movement is locked until roughly forty pages of dialogue have
+# been dismissed. Only then does the door -- in the bottom wall row, reached by
+# walking into what looks like wall -- work at all.
+RIGHT 16 x5      # across the bedroom to the stairs
+none 30
+LEFT 16 x1       # onto the staircase tile, which is entered from its right
+none 30
+UP 16 x2
+none 150         # downstairs; Mom starts talking
+B 4
+none 60
+B 4
+none 60
+B 4
+none 90
+A 4              # the television scene: she calls, the player follows
+none 50
+A 4
+none 50
+A 4
+none 50
+A 4
+none 50
+A 4
+none 50
+A 4
+none 50
+A 4
+none 50
+A 4
+none 50
+A 4
+none 50
+A 4
+none 50
+A 4
+none 50
+A 4
+none 50
+none 150
+B 4
+none 50
+B 4
+none 50
+B 4
+none 50
+B 4
+none 50
+B 4
+none 50
+B 4
+none 50
+B 4
+none 50
+B 4
+none 50
+B 4
+none 50
+B 4
+none 50
+B 4
+none 50
+B 4
+none 50
+B 4
+none 50
+B 4
+none 50
+B 4
+none 50
+B 4
+none 50
+B 4
+none 50
+B 4
+none 50
+B 4
+none 50
+B 4
+none 50
+B 4
+none 50
+B 4
+none 50
+B 4
+none 50
+B 4
+none 50
+B 4
+none 50
+none 150
+RIGHT 16 x3      # to the door mat in the bottom wall row
+none 40
+DOWN 16 x4
+none 40
+DOWN 16 x2
+none 40
+RIGHT 16 x2
+none 40
+DOWN 16 x2
+none 40
+RIGHT 16 x1
+none 40
+DOWN 16 x3
+none 300

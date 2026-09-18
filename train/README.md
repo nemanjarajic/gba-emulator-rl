@@ -29,7 +29,18 @@ below real time:
 That takes about 40 seconds. `emerald_start.txt` is the input script; the
 `.state` file is not committed, since it contains the game's memory.
 
-**Train from `emerald_clockset.state` instead**, built the same way with
+**Train from `emerald_outside.state`**, built from `emerald_clockset.state`,
+which is built from `emerald_start.state`. Each one exists because training
+could not pass the gate in front of it.
+
+**`emerald_outside.state`** starts in Littleroot Town with the map open. Three
+gates sit between the bedroom and the front door and 16M steps never passed
+any of them: the staircase is a single tile entered from its side; coming down
+it triggers a scene where Mom calls the player to the television, locking
+movement until about forty pages of dialogue are dismissed; and the door is in
+the bottom wall row, reached by walking into what looks like wall.
+
+**`emerald_clockset.state`**, built the same way with
 `--from train/states/emerald_start.state`. Emerald keeps Littleroot's exits shut
 until the player sets the wall clock upstairs, and the clock's "Is this the
 correct time?" prompt starts on NO: pressing A there returns to the clock, so a
@@ -126,8 +137,14 @@ opened and closed at any time.
   nothing rather than paying out. `episodes.csv` and `log.csv` break the return
   down by term (`r_new_tile`, `r_repeat_dialog`, ...), so a term that dominates
   shows. `python -m train.test_rewards` checks every term against scripted RAM.
-- **Episodes:** 512 steps, all instances together, every one from the start
-  state.
+- **Episodes:** 512 steps, all instances together.
+- **The start moves forward.** At the end of each episode the instance that has
+  seen the most maps becomes the start state for the next one, saved as
+  `anchor.state` in the run directory so it survives a restart. A game like this
+  is a chain of gates, and without an anchor an agent that passes one only
+  occasionally has to pass it again every episode. Instances inside a text box
+  are skipped, and the anchor only ever moves forward. `--no-anchor` turns it
+  off.
 
 ## RAM addresses
 
