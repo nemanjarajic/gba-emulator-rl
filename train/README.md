@@ -72,9 +72,9 @@ opened and closed at any time.
 
   | event | reward |
   |---|---|
-  | standing on a tile | +0.02 / sqrt(times any instance has ever stood there) |
-  | entering a map | +3 / sqrt(times any instance has ever entered it) |
-  | a page of text this instance has not read | +0.5 |
+  | standing on a tile this instance has never stood on | +0.05 |
+  | entering a map this instance has never entered | +3 |
+  | a page of text this instance has not read | +0.5, at most +3 an episode |
   | the count of story flags set reaches a new high | +0.25 each |
   | the party's total level reaches a new high | +0.2 per level |
   | a badge | +100 |
@@ -87,20 +87,25 @@ opened and closed at any time.
   | a party Pokemon faints | -2 |
   | the whole party faints | -10 |
 
-  **Novelty does not reset between episodes.** It did at first, and an agent
-  simply walked the same rooms for the same reward every episode: 2.9M steps
-  from the truck and 3.6M from the clock, each plateauing within one room of
-  where it started. Visit counts now persist, and the reward decays as
-  1/sqrt(visits), so covered ground stops paying while genuinely new ground pays
-  full. Strict first-visit-only novelty was tried first and is worse: with 4096
-  instances the first to reach a tile takes the reward and the other 4095 get
-  nothing, which turned the second episode into pure penalty.
+  **Novelty is per instance and lasts the whole run.** Two designs failed first,
+  both instructively. Novelty that reset each episode paid for walking the same
+  rooms forever: two runs plateaued within a room of where they started, 2.9M
+  and 3.6M steps. Sharing one count between instances with a 1/sqrt(visits)
+  decay then killed exploration outright -- 4096 instances cover the nearby
+  tiles within seconds, so walking paid 0.007 an episode, dialogue was the only
+  live reward left, and agents stood at the bedroom PC reading menus for 7M
+  steps while entropy collapsed to 0.015. Per instance, the signal is dense for
+  everyone and the starting room stops paying after one visit; the dialogue cap
+  keeps menus from out-earning walking.
 
-  Dialogue is tracked per instance rather than globally, for the same reason,
-  and judged only when the text changes, so a box left open is not charged every
-  step. A message is identified by a hash of the expanded text at `gStringVar4`,
-  which distinguishes messages built at run time (anything containing the
-  player's name).
+  Tiles live in a 2 KiB bitmap per instance rather than a set, which would run
+  to hundreds of megabytes at this scale; a hash collision costs one unpaid
+  tile.
+
+  Dialogue is judged only when the text changes, so a box left open is not
+  charged every step. A message is identified by a hash of the expanded text at
+  `gStringVar4`, which distinguishes messages built at run time (anything
+  containing the player's name).
 
   Progress rewards pay only for new highs, so nothing can be farmed by losing
   and regaining it; healing is capped for the same reason, and a level-up or the

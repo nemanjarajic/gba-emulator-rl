@@ -47,7 +47,12 @@ def make(first, weights=RewardWeights(), shared=None):
     has seen, which is how novelty now works: across instances and episodes."""
     e = EmeraldExplore.__new__(EmeraldExplore)
     e.env, e.n, e.frames, e.episode_steps, e.w = Fake(), 1, 16, 10**9, weights
-    e.tile_visits, e.map_visits = (shared.tile_visits, shared.map_visits) if shared else ({}, {})
+    import numpy as _np
+    from train.emerald import TILE_BITS
+    # Each instance keeps its own memory of tiles and maps; `shared` only stands
+    # for "another instance in the same run", which shares nothing of the sort.
+    e.tile_seen = _np.zeros((1, TILE_BITS), dtype=bool)
+    e.seen_maps_ever = [set()]
     e.seen_dialog = [set()]
     e._script = [first]
     e.read = lambda: e._script.pop(0)
@@ -109,6 +114,11 @@ r, _ = run(e, ram(6, 5)); check("still paid while standing on fresh ground", r, 
 
 e = make(ram(0, 0))
 r, _ = run(e, ram(1, 0, dialog=111)); check("a message this instance has not read", r, w.new_tile + w.new_dialog)
+capped = make(ram(0, 0))
+for page in range(20):
+    run(capped, ram(0, 0, dialog=1000 + page))
+_, c = run(capped, ram(0, 0, dialog=2000))
+check("dialogue capped per episode", c["new_dialog"], w.dialog_cap)
 r, _ = run(e, ram(1, 0, dialog=111)); check("the same page still open: not charged again", r, w.revisit)
 r, _ = run(e, ram(1, 0, dialog=222)); check("the next page of it", r, w.revisit + w.new_dialog)
 r, _ = run(e, ram(1, 0)); check("box closed", r, w.revisit)
@@ -117,12 +127,11 @@ other = make(ram(0, 0), shared=e)
 r, _ = run(other, ram(9, 9, dialog=111))
 check("another instance still gets paid for it", r, w.new_tile + w.new_dialog)
 
-e2 = make(ram(0, 0), shared=e)
+e2 = make(ram(0, 0), shared=e)  # a second instance, sharing nothing but the run
 r, _ = run(e2, ram(1, 0))
-check("a tile two instances have now visited pays w/sqrt(2)", r, w.new_tile / 2 ** 0.5)
-e3 = make(ram(0, 0), shared=e2)
-r, _ = run(e3, ram(1, 0))
-check("a third visit pays w/sqrt(3)", r, w.new_tile / 3 ** 0.5)
+check("a tile another instance has seen still pays in full", r, w.new_tile)
+r, _ = run(e2, ram(2, 0)); check("and so does the next new tile", r, w.new_tile)
+r, _ = run(e2, ram(1, 0)); check("but not one this instance has stood on", r, w.revisit)
 
 e = make(ram(0, 0))
 r, _ = run(e, ram(0, 0, badges=1)); check("badge", r, w.badge + w.revisit)
