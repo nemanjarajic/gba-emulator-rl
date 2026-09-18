@@ -74,6 +74,7 @@ opened and closed at any time.
   |---|---|
   | standing on a tile this instance has never stood on | +0.05 |
   | entering a map this instance has never entered | +3 |
+  | trying a direction from a tile this instance has never tried there | +0.01 |
   | a page of text this instance has not read | +0.5, at most +3 an episode |
   | the count of story flags set reaches a new high | +0.25 each |
   | the party's total level reaches a new high | +0.2 per level |
@@ -82,7 +83,7 @@ opened and closed at any time.
   | the Pokedex owned count reaches a new high | +2 per species |
   | party HP restored, the party otherwise unchanged | +1 per whole party's worth, at most +5 an episode |
   | a page of text this instance has read before | -0.25 |
-  | a step on a tile already visited this episode (standing still included) | -0.002 |
+  | a step on a tile already visited this episode, unless it was a first attempt in that direction | -0.002 |
   | each step once no new tile has been found for 200 steps | -0.01 |
   | a party Pokemon faints | -2 |
   | the whole party faints | -10 |
@@ -97,6 +98,14 @@ opened and closed at any time.
   steps while entropy collapsed to 0.015. Per instance, the signal is dense for
   everyone and the starting room stops paying after one visit; the dialogue cap
   keeps menus from out-earning walking.
+
+  **Walking into walls has to pay.** The doors out of Emerald's houses sit in
+  the bottom wall row, so leaving means walking into what looks like solid
+  wall: no tile is gained, and the revisit penalty used to be charged for it,
+  which taught agents away from the one move that opens the map. A first
+  attempt in a given direction from a given tile now pays a little and is
+  exempt from the revisit penalty and the stuck timer, so probing edges is
+  worth doing once and cannot be farmed.
 
   Tiles live in a 2 KiB bitmap per instance rather than a set, which would run
   to hundreds of megabytes at this scale; a hash collision costs one unpaid

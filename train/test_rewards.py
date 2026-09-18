@@ -42,7 +42,12 @@ class Fake:
     observations = np.zeros((1, 80, 120), np.uint8)
 
 
-def make(first, weights=RewardWeights(), shared=None):
+# Most checks below are about one reward term at a time, so they run with the
+# probing bonus switched off; the probing section sets its own weights.
+QUIET = RewardWeights(new_try=0.0)
+
+
+def make(first, weights=QUIET, shared=None):
     """A one-instance environment. `shared` reuses another's memory of what it
     has seen, which is how novelty now works: across instances and episodes."""
     e = EmeraldExplore.__new__(EmeraldExplore)
@@ -52,6 +57,11 @@ def make(first, weights=RewardWeights(), shared=None):
     # Each instance keeps its own memory of tiles and maps; `shared` only stands
     # for "another instance in the same run", which shares nothing of the sort.
     e.tile_seen = _np.zeros((1, TILE_BITS), dtype=bool)
+    # With the probing bonus off, start as if every direction had been tried:
+    # otherwise the first attempt anywhere is exempt from the revisit penalty
+    # and these checks would be measuring that instead of the term they name.
+    e.try_seen = _np.full((1, TILE_BITS), weights.new_try == 0.0, dtype=bool)
+    e.prev_tile = _np.zeros(1, dtype=_np.int64)
     e.seen_maps_ever = [set()]
     e.seen_dialog = [set()]
     e._script = [first]
@@ -61,9 +71,9 @@ def make(first, weights=RewardWeights(), shared=None):
     return e
 
 
-def run(e, reading):
+def run(e, reading, action=0):
     e._script.append(reading)
-    _, r, _, _ = e.step(np.array([0]))
+    _, r, _, _ = e.step(np.array([action]))
     return float(r[0]), {k: float(v[0]) for k, v in e.components.items()}
 
 
@@ -78,6 +88,21 @@ def check(what, got, want):
 w = RewardWeights()
 starter = [(5, 20, 20)]
 
+# Probing edges: doors sit in the wall row, so a blocked move must pay once and
+# must not be charged as standing still.
+e = make(ram(0, 0), weights=w)
+r, _ = run(e, ram(0, 0), action=1)
+check("a direction never tried here", r, w.new_try)
+r, _ = run(e, ram(0, 0), action=1)
+check("trying it again pays nothing and costs the revisit", r, w.revisit)
+r, _ = run(e, ram(0, 0), action=2)
+check("a different direction from the same tile", r, w.new_try)
+r, _ = run(e, ram(1, 0), action=3)
+check("a direction that moves: try plus new tile", r, w.new_try + w.new_tile)
+r, _ = run(e, ram(1, 0), action=1)
+check("first try from the new tile, blocked, still not charged", r, w.new_try)
+
+w = QUIET  # the remaining checks isolate one term at a time
 e = make(ram(0, 0))
 r, _ = run(e, ram(1, 0)); check("a tile nobody has visited", r, w.new_tile)
 r, _ = run(e, ram(1, 0)); check("standing still is a revisit", r, w.revisit)

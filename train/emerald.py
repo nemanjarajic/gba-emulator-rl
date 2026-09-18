@@ -46,8 +46,9 @@ FIRST_STORY_FLAG = 0x20
 TILE_BITS = 1 << 14
 
 # Every reward term, in the order logs report them.
-REWARD_TERMS = ("new_tile", "new_map", "new_dialog", "story_flag", "level", "badge", "party_member",
-                "species_owned", "heal", "repeat_dialog", "revisit", "stuck", "faint", "blackout")
+REWARD_TERMS = ("new_tile", "new_map", "new_try", "new_dialog", "story_flag", "level", "badge",
+                "party_member", "species_owned", "heal", "repeat_dialog", "revisit", "stuck",
+                "faint", "blackout")
 
 # The policy's buttons. START and SELECT are left out: they open menus that
 # cost many steps and lead nowhere for exploration.
@@ -68,6 +69,12 @@ class RewardWeights:
     # decayed to 0.007 an episode and walking stopped paying at all.
     new_tile: float = 0.05
     new_map: float = 3.0
+    # Trying a direction from a tile for the first time, whether or not it
+    # moves the player. Doors in Emerald's houses sit in the bottom wall row:
+    # leaving means walking into what looks like a wall, which earns no tile
+    # and used to be charged the revisit penalty, so the agent was being taught
+    # away from the one move that opens the map.
+    new_try: float = 0.01
     new_dialog: float = 0.5       # a page of text this instance has not read before
     dialog_cap: float = 3.0       # ...up to this much an episode: menus print
                                   # endless unread text, and with walking no
@@ -131,6 +138,7 @@ class EmeraldExplore:
         # scale, while this is 2 KiB each. A collision costs one unpaid tile,
         # which is a fair trade. Maps and messages are few enough for sets.
         self.tile_seen = np.zeros((self.n, TILE_BITS), dtype=bool)
+        self.try_seen = np.zeros((self.n, TILE_BITS), dtype=bool)
         self.seen_maps_ever: list[set[int]] = [set() for _ in range(self.n)]
         self.seen_dialog: list[set[int]] = [set() for _ in range(self.n)]
         self.ram: dict = {}
@@ -203,6 +211,7 @@ class EmeraldExplore:
         self.seen_tiles = [set() for _ in range(self.n)]
         self.seen_maps = [set() for _ in range(self.n)]
         self.last_dialog = np.zeros(self.n, dtype=np.uint64)
+        self.prev_tile = np.zeros(self.n, dtype=np.int64)
         self._note_novelty(ram)
         self.last_dialog = np.zeros(self.n, dtype=np.uint64)  # judged again after a reset
         self._note_dialog(ram)
@@ -216,6 +225,21 @@ class EmeraldExplore:
         # Reward term -> per-instance total this episode, so logs can show which
         # term a return came from.
         self.components = {key: np.zeros(self.n) for key in REWARD_TERMS}
+
+    def _note_tries(self, ram: dict, action_idx: np.ndarray) -> np.ndarray:
+        """Which instances just tried a direction they have never tried here.
+
+        Keyed on where the player stood *before* the action, so a move that is
+        blocked still counts as tried: that is the whole point.
+        """
+        prev = self.prev_tile
+        h = ((prev.astype(np.uint64) * np.uint64(6) + action_idx.astype(np.uint64))
+             * np.uint64(0x9E3779B97F4A7C15))
+        idx = ((h >> np.uint64(40)) & np.uint64(TILE_BITS - 1)).astype(np.int64)
+        rows = np.arange(self.n)
+        first = ~self.try_seen[rows, idx]
+        self.try_seen[rows, idx] = True
+        return first
 
     def _note_novelty(self, ram: dict) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
         """Novelty of where each instance now stands.
@@ -235,6 +259,7 @@ class EmeraldExplore:
         new_tile = ~self.tile_seen[rows, idx]
         self.tile_seen[rows, idx] = True
 
+        self.prev_tile = tile
         new_map = np.zeros(self.n, dtype=bool)
         again = np.zeros(self.n, dtype=bool)
         for i in range(self.n):
@@ -272,6 +297,8 @@ class EmeraldExplore:
 
     def step(self, action_idx: np.ndarray):
         """Returns (obs, reward, done, info). Episodes end together."""
+        # Where the player stood before the action, for the probing bonus.
+        tried = self._note_tries(self.ram, np.asarray(action_idx))
         self.env.step(ACTIONS[action_idx], frames=self.frames)
         self.t += 1
         prev, ram = self.ram, self.read()
@@ -306,11 +333,12 @@ class EmeraldExplore:
         heal = np.minimum(w.heal * restored, np.maximum(w.heal_cap - self.healed, 0.0))
         self.healed += heal
 
-        self.since_new_tile = np.where(again, self.since_new_tile + 1, 0)
+        self.since_new_tile = np.where(again & ~tried, self.since_new_tile + 1, 0)
 
         terms = {
             "new_tile": w.new_tile * new_tile,
             "new_map": w.new_map * new_map,
+            "new_try": w.new_try * tried,
             "new_dialog": dialog_pay,
             "story_flag": w.story_flag * gain("story"),
             "level": w.level * gain("level_sum"),
@@ -319,7 +347,7 @@ class EmeraldExplore:
             "species_owned": w.species_owned * gain("owned"),
             "heal": heal,
             "repeat_dialog": w.repeat_dialog * repeat_dialog,
-            "revisit": w.revisit * again,
+            "revisit": w.revisit * (again & ~tried),
             "stuck": w.stuck * (self.since_new_tile > w.stuck_after),
             "faint": w.faint * fainted,
             "blackout": w.blackout * blackout,
@@ -352,6 +380,7 @@ class EmeraldExplore:
             "badges": float(ram["badges"].mean()),
             "story_flags": float(ram["story"].mean()),
             "tiles_ever": float(self.tile_seen.sum(axis=1).mean()),
+            "tries_ever": float(self.try_seen.sum(axis=1).mean()),
             "maps_ever": float(np.mean([len(m) for m in self.seen_maps_ever])),
             "max_maps_ever": int(max(len(m) for m in self.seen_maps_ever)),
             "dialog_ever": float(np.mean([len(d) for d in self.seen_dialog])),
@@ -362,6 +391,7 @@ class EmeraldExplore:
     def novelty_state(self) -> dict:
         """What each instance has ever seen, for saving beside a checkpoint."""
         return {"tile_seen": np.packbits(self.tile_seen, axis=1),
+                "try_seen": np.packbits(self.try_seen, axis=1),
                 "seen_maps": [np.fromiter(m, dtype=np.int64) for m in self.seen_maps_ever],
                 "seen_dialog": [np.fromiter(d, dtype=np.uint64) for d in self.seen_dialog]}
 
@@ -370,6 +400,9 @@ class EmeraldExplore:
         packed = state.get("tile_seen")
         if packed is not None and packed.shape[0] == self.n:
             self.tile_seen = np.unpackbits(packed, axis=1, count=TILE_BITS).astype(bool)
+        tries = state.get("try_seen")
+        if tries is not None and tries.shape[0] == self.n:
+            self.try_seen = np.unpackbits(tries, axis=1, count=TILE_BITS).astype(bool)
         maps, dialog = state.get("seen_maps", []), state.get("seen_dialog", [])
         for i in range(self.n):
             self.seen_maps_ever[i] = {int(v) for v in maps[i]} if i < len(maps) else set()

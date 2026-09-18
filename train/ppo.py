@@ -195,7 +195,7 @@ def main():
     # so learning is visible long before an episode ends.
     # episodes.csv: one row per finished episode, with its final numbers.
     stat_keys = (["episode_step", "return", "tiles", "maps", "max_maps", "party", "owned", "level_sum",
-                  "badges", "story_flags", "tiles_ever", "maps_ever", "max_maps_ever",
+                  "badges", "story_flags", "tiles_ever", "tries_ever", "maps_ever", "max_maps_ever",
                   "dialog_ever"]
                  + [f"r_{term}" for term in REWARD_TERMS])
 
